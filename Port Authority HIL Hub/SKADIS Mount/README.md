@@ -1,8 +1,8 @@
-# Port Authority Hub SKADIS Mount
+# Port Authority HIL Hub SKADIS Mount
 
 Hangs the [Port Authority 4-port USB hub](https://github.com/mikeysklar/hil-hub-port-authority) edge-on from an IKEA SKADIS pegboard. The board screws to two M2 heat set inserts in the mount. Hole positions are checked against the Rev C drill and outline files.
 
-![Turntable render](<Port Authority Hub SKADIS Mount.gif>)
+![Turntable render](<Port Authority HIL Hub SKADIS Mount.gif>)
 
 Mounted edge: The short edge by USB-C, so USB-C sits nearest the panel and the USB-A ports point down. The two STEMMA QT ports face the panel.
 
