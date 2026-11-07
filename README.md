@@ -1,4 +1,8 @@
 # Adafruit_CAD_Designs
-STEP, 3MF, GIF, JPG, other design files, and README.md for accessories, cases, and mounts that fit Adafruit boards but are not sold in the Adafruit Store
+This repo contains various design files ( STEP, 3MF, STL ) for accessories that couple with Adafruit products. 
 
-Each board has a folder named `PID Board`, using its Adafruit product ID, with one subfolder per design, e.g. `6200 Fruit Jam/Light Tunnel`. A design that fits several boards lives under one of them, and its README lists the others.
+Typically this for an unofficial case, mounting hardware and PCB adapters we have used during a prototyping phase.
+
+Each board has a folder named `PID Board`, using its Adafruit product ID, with one subfolder per design, e.g. `6200 Fruit Jam/Light Tunnel`. 
+
+A design that fits several boards lives under one of them, and its README lists the others.
