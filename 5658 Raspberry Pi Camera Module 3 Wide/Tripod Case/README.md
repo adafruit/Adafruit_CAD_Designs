@@ -4,6 +4,8 @@ A two part snap-together case for the [Raspberry Pi Camera Module 3 Wide](https:
 
 ![Turntable render](<5658 Raspberry Pi Camera Module 3 Wide Tripod Case.gif>)
 
+![Exploded line drawing: lens opening, pins, snap, ribbon path and tripod thread](<5658 Raspberry Pi Camera Module 3 Wide Tripod Case Anatomy.gif>)
+
 - The case can't block the 120 degree view. The front face sits 0.6 mm behind the lens glass, and a 125 degree cone from the glass rim is cut from the front anyway, so moving the face forward chamfers the opening instead of darkening the corners.
 - No screws. Pins on the front posts go through the board's mount holes into the back, and a lip on the back snaps inside the front walls. The ribbon runs down a 20.5 mm channel in the foot and out its front face, so the tripod plate never presses on it.
 - The tripod thread is printed in the foot, so no nut or adapter is needed. Set `thread_d` 9.525 and `thread_tpi` 16 for a 3/8"-16 socket.
