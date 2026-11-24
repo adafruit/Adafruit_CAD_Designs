@@ -105,6 +105,8 @@ PARAMS = [
     ("bead_len", 10.0, "bead and groove length, centred on the side, where the walls flex most"),
     ("groove_clear", 0.05, "groove radius over the bead"),
     ("cable_w", 20.5, "ribbon slot width, bottom wall of the front shell and the foot (16 mm ribbon + 2.25 mm each side)"),
+    ("cable_floor", 3.0, "foot floor under the ribbon exit, so a tripod plate can't pinch the ribbon"),
+    ("cable_exit_h", 4.0, "height (Y) of the ribbon exit through the foot's front face"),
     ("# tripod foot, on the back shell", None, ""),
     ("foot_h", 10.0, "foot height below the case (Y). The foot is the case width, the ribbon runs down a channel in its front"),
     ("foot_rise", 6.0, "foot runs up the back face this far, for strength"),
@@ -439,8 +441,13 @@ def build_back(doc):
     outside = box(doc, "WallZone", "out_x0 - 1", "out_x1 + 1", "out_y0", "out_y1 + 1",
                   "z_floor", "1")
     tools.append(cut(doc, "OutsideLip", outside, [envelope]))
+    # Ribbon channel: down the foot, then out its front face above a solid floor, so the
+    # tripod plate under the foot never presses on the ribbon.
     tools.append(box(doc, "CableSlot", "lens_x - cable_w / 2", "lens_x + cable_w / 2",
-                     "foot_y0 - 1", "out_y0 + %g" % EPS, "z_floor", "0"))
+                     "foot_y0 + cable_floor", "out_y0 + %g" % EPS, "z_floor", "0"))
+    tools.append(box(doc, "CableExit", "lens_x - cable_w / 2", "lens_x + cable_w / 2",
+                     "foot_y0 + cable_floor", "foot_y0 + cable_floor + cable_exit_h",
+                     "z_floor", "z_front + 1"))
     tools += thread_cutter(doc)
     # The beads go on after the guard cut: they reach past the lip into the grooves on purpose.
     return fuse(doc, "Back", [cut(doc, "BackCut", body, tools)] + beads)
@@ -694,10 +701,11 @@ def check(doc, front, back, cam):
             # the back shell's cavity ceiling under the top wall, spanning the side walls.
             # On the back that ceiling has arched ends (the cavity's rounded corners), so take the
             # whole band under the top wall; in the back print frame, print Z is case Y.
+            # The ribbon exit's roof is the other bridge: cable_w across the foot's side walls.
             ceiling = (o is back and f.BoundBox.ZMin >= v("in_y1") - v("pcb_r") - v("gap") - 0.1
                        and f.BoundBox.ZMax <= v("in_y1") + 0.01)
             if ceiling or (f.Surface.__class__.__name__ == "Plane" and f.normalAt(0, 0).z < -0.99
-                           and f.BoundBox.XLength >= v("pcb_w")):
+                           and f.BoundBox.XLength >= min(v("pcb_w"), v("cable_w")) - 0.01):
                 bridge += f.Area
                 continue
             for tri in MeshPart.meshFromShape(Shape=f, LinearDeflection=0.05).Facets:
