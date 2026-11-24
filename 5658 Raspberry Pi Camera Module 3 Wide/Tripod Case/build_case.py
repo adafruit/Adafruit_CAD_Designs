@@ -36,6 +36,7 @@ front posts go through the board's 2.2 mm holes into sockets in the back bosses,
 the back plate snaps inside the front walls (a bead on each side into a groove).
 """
 
+import math
 import os
 import struct
 import zipfile
@@ -113,7 +114,7 @@ PARAMS = [
     ("foot_ext", 9.0, "foot depth behind the back plate (Z)"),
     ("thread_d", 6.35, "major diameter. 1/4-20: 6.35, 3/8-16: 9.525"),
     ("thread_tpi", 20.0, "threads per inch. 1/4-20: 20, 3/8-16: 16"),
-    ("thread_len", 7.0, "thread depth from the foot's bottom face"),
+    ("thread_len", 12.0, "thread depth from the foot's bottom face, up into the rise behind the back plate"),
     ("thread_clear", 0.2, "radial clearance for a printed thread"),
     ("# derived, do not edit", None, ""),
     ("in_x0", "=-gap", ""),
@@ -383,13 +384,24 @@ def thread_cutter(doc):
     sweep.Frenet = True
     helix.Visibility = sk.Visibility = False
 
-    bore = doc.addObject("Part::Cylinder", "ThreadBore")
-    bind(bore, "Radius", "thread_r_min")
-    bind(bore, "Height", "thread_len + 1")
-    bore.Placement.Rotation = App.Rotation(App.Vector(1, 0, 0), -90)
-    bind(bore, "Placement.Base.x", "lens_x")
-    bind(bore, "Placement.Base.y", "foot_y0 - 1")
-    bind(bore, "Placement.Base.z", "thread_z")
+    # The bore is a 64-sided prism with its flats at thread_r_min (0.003 mm off a circle).
+    # A true cylinder coaxial with the helical groove makes OCC's booleans silently drop
+    # either the bore or the groove; flat faces against the helix cut cleanly.
+    sides = 64
+    section = doc.addObject("Part::RegularPolygon", "ThreadBoreSection")
+    section.Polygon = sides
+    bind(section, "Circumradius", "thread_r_min / cos(%g)" % (180.0 / sides))
+    section.Placement.Rotation = App.Rotation(App.Vector(1, 0, 0), -90)
+    bind(section, "Placement.Base.x", "lens_x")
+    bind(section, "Placement.Base.y", "foot_y0 - 1")
+    bind(section, "Placement.Base.z", "thread_z")
+    bore = doc.addObject("Part::Extrusion", "ThreadBore")
+    bore.Base = section
+    bore.DirMode = "Custom"
+    bore.Dir = App.Vector(0, 1, 0)
+    bore.Solid = True
+    bind(bore, "LengthFwd", "thread_len + 1")
+    section.Visibility = False
 
     lead = doc.addObject("Part::Cone", "ThreadLead")
     bind(lead, "Radius1", "thread_r_max + 0.6")
@@ -448,9 +460,13 @@ def build_back(doc):
     tools.append(box(doc, "CableExit", "lens_x - cable_w / 2", "lens_x + cable_w / 2",
                      "foot_y0 + cable_floor", "foot_y0 + cable_floor + cable_exit_h",
                      "z_floor", "z_front + 1"))
-    tools += thread_cutter(doc)
+    # The thread tools are cut one at a time. Fused with each other (or the other tools), OCC
+    # returns a valid single solid that has lost the bore, leaving the socket solid inside.
+    shell = cut(doc, "BackCut", body, tools)
+    for tool in thread_cutter(doc):
+        shell = cut(doc, "BackCut" + tool.Name, shell, [tool])
     # The beads go on after the guard cut: they reach past the lip into the grooves on purpose.
-    return fuse(doc, "Back", [cut(doc, "BackCut", body, tools)] + beads)
+    return fuse(doc, "Back", [shell] + beads)
 
 
 def y_cyl(doc, name, x, r, y0, y1, z):
@@ -653,6 +669,8 @@ def check(doc, front, back, cam):
     report("thread wall, back", wall >= 1.2, "%.2f mm" % wall)
     wall = v("z_floor") - v("thread_z") - v("thread_r_max")
     report("thread wall, front", wall >= 1.2, "%.2f mm" % wall)
+    roof = v("out_y0") + v("foot_rise") - (v("foot_y0") + v("thread_len"))
+    report("thread roof", roof >= 1.2, "%.2f mm above the socket" % roof)
     # Fit against a nominal male screw: major d, minor d - 1.2269 P (UNC external).
     bolt_major = v("thread_d") / 2
     bolt_minor = (v("thread_d") - 1.2269 * v("pitch")) / 2
@@ -666,6 +684,42 @@ def check(doc, front, back, cam):
     groove = doc.getObject("ThreadGroove").Shape
     report("thread groove valid", groove.isValid() and len(groove.Solids) == 1,
            "%d solid" % len(groove.Solids))
+    # Probe the finished socket, not the parameters: a boolean that drops the bore still
+    # passes every check above. Crop to the socket so isInside stays fast.
+    ax, az, y0, p = v("lens_x"), v("thread_z"), v("foot_y0"), v("pitch")
+    sock = back.Shape.common(Part.makeCylinder(v("thread_r_max") + 1, v("thread_len") + 1,
+                                               App.Vector(ax, y0 - 0.5, az), App.Vector(0, 1, 0)))
+    solid = lambda r, th, y: sock.isInside(App.Vector(ax + r * math.sin(th), y,
+                                                     az + r * math.cos(th)), 0.001, True)
+    depth = [y0 + 0.1 + i * 0.25 for i in range(int((v("thread_len") - 0.2) / 0.25) + 1)]
+    turns = [i * math.pi / 4 for i in range(8)]
+    blocked = sum(solid(r, th, y) for r in (0, v("thread_r_min") - 0.05) for th in turns
+                  for y in depth)
+    report("thread bore empty", blocked == 0, "%d of %d probes in material"
+           % (blocked, 2 * len(turns) * len(depth)))
+    # A basic right-hand bolt (crest flat p/8, root at the minor diameter) must find a phase
+    # where none of its flank points are in material. Theta runs from +Z toward +X, so a
+    # right-hand thread climbs +Y as theta grows.
+
+    def bolt_r(u):  # u: distance from the tooth centre along the axis, 0..p/2
+        if u <= p / 16:
+            return v("thread_d") / 2
+        return max(v("thread_d") / 2 - (u - p / 16) / math.tan(math.radians(30)),
+                   (v("thread_d") - 1.226869 * p) / 2)
+    span = [y0 + 1.6 + i * 0.1 for i in range(int((v("thread_len") - 2.2) / 0.1))]
+    best = None
+    for shift in [i * 0.05 for i in range(20)]:
+        hits = 0
+        for y in span:
+            for th in [i * math.pi / 6 for i in range(12)]:
+                phase = (y - y0) / p - th / (2 * math.pi) + shift
+                u = abs(((phase + 0.5) % 1) - 0.5) * p
+                hits += solid(bolt_r(u) - 0.02, th, y)
+        best = hits if best is None else min(best, hits)
+        if best == 0:
+            break
+    report("1/4-20 bolt fits the socket", best == 0, "%d bolt points in material at the best phase"
+           % best)
 
     # Pins and snap.
     report("pin clears board hole", v("hole_d") - v("pin_d") >= 0.2,
