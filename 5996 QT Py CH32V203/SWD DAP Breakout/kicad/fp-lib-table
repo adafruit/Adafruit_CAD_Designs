@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "QTPyDAP")(type "KiCad")(uri "${KIPRJMOD}/../models/QTPyDAP.pretty")(options "")(descr "QT Py DAP breakout local parts"))
+)
